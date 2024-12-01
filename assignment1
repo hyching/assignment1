@@ -1,0 +1,98 @@
+import java.io.*;
+import java.net.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class HttpServer {
+    private static final String HOST = "127.0.0.1"; // 伺服器監聽的 IP 地址
+    private static final int PORT = 8888; // 伺服器監聽的 TCP 埠號
+
+    public static void main(String[] args) {
+        try (ServerSocket serverSocket = new ServerSocket(PORT, 50, InetAddress.getByName(HOST))) { // 建立 ServerSocket 並監聽指定的 IP 和埠號
+            System.out.println("Server running on " + HOST + ":" + PORT); // 顯示伺服器啟動訊息
+            ExecutorService executor = Executors.newCachedThreadPool(); // 使用執行緒池處理多客戶端連線
+
+            while (true) {
+                Socket clientSocket = serverSocket.accept(); // 接收客戶端連線
+                executor.execute(new ClientHandler(clientSocket)); // 分配執行緒處理客戶端請求
+            }
+        } catch (IOException e) {
+            System.err.println("Server error: " + e.getMessage()); // 捕獲伺服器錯誤
+        }
+    }
+}
+
+class ClientHandler implements Runnable {
+    private final Socket clientSocket;
+
+    public ClientHandler(Socket clientSocket) {
+        this.clientSocket = clientSocket; // 初始化客戶端 Socket
+    }
+
+    @Override
+    public void run() {
+        try (BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream())); // 用於讀取客戶端請求
+             PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true)) { // 用於回應客戶端
+             
+            String requestLine = in.readLine(); // 讀取 HTTP 請求的首行
+            if (requestLine != null) {
+                if (requestLine.contains("GET /good.html")) { // 判斷是否請求 good.html
+                    sendGoodHtml(out); // 回應 good.html 的內容
+                } else if (requestLine.contains("GET /style.css")) { // 判斷是否請求 style.css
+                    sendStyleCss(out); // 回應 style.css 的內容
+                } else if (requestLine.contains("GET /redirect.html")) { // 判斷是否請求 redirect.html
+                    sendRedirect(out); // 回應重定向訊息
+                } else if (requestLine.contains("GET /notfound.html")) { // 判斷是否請求不存在的 notfound.html
+                    sendNotFound(out); // 回應 404 Not Found
+                } else {
+                    sendBadRequest(out); // 處理其他不符合要求的請求
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("Client handler error: " + e.getMessage()); // 處理客戶端錯誤
+        } finally {
+            try {
+                clientSocket.close(); // 關閉客戶端連線
+            } catch (IOException e) {
+                System.err.println("Socket close error: " + e.getMessage()); // 關閉連線時的錯誤處理
+            }
+        }
+    }
+
+    private void sendGoodHtml(PrintWriter out) {
+        String response = "HTTP/1.1 200 OK\r\n" + // HTTP 狀態碼 200 OK
+                "Content-Type: text/html\r\n\r\n" + // 指定回應內容類型為 HTML
+                "<html><head><link href='style.css' rel='stylesheet' type='text/css'></head>" + // 引用 style.css
+                "<body>good</body></html>"; // HTML 主體內容
+        out.print(response); // 傳送回應
+        out.flush(); // 確保資料立即傳送
+    }
+
+    private void sendStyleCss(PrintWriter out) {
+        String response = "HTTP/1.1 200 OK\r\n" + // HTTP 狀態碼 200 OK
+                "Content-Type: text/css\r\n\r\n" + // 指定回應內容類型為 CSS
+                "body {color: red;}"; // CSS 主體內容
+        out.print(response); // 傳送回應
+        out.flush(); // 確保資料立即傳送
+    }
+
+    private void sendRedirect(PrintWriter out) {
+        String response = "HTTP/1.1 301 Moved Permanently\r\n" + // HTTP 狀態碼 301
+                "Location: /good.html\r\n\r\n"; // 重定向到 good.html
+        out.print(response); // 傳送回應
+        out.flush(); // 確保資料立即傳送
+    }
+
+    private void sendNotFound(PrintWriter out) {
+        String response = "HTTP/1.1 404 Not Found\r\n\r\n" + // HTTP 狀態碼 404
+                "<html><body>404 Not Found</body></html>"; // 404 頁面內容
+        out.print(response); // 傳送回應
+        out.flush(); // 確保資料立即傳送
+    }
+
+    private void sendBadRequest(PrintWriter out) {
+        String response = "HTTP/1.1 400 Bad Request\r\n\r\n"; // HTTP 狀態碼 400
+        out.print(response); // 傳送回應
+        out.flush(); // 確保資料立即傳送
+    }
+}
